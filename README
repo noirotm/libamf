@@ -1,0 +1,9 @@
+This is libamf.
+
+This library will be composed of a few parts:
+- C AMF0 serializer/parser
+- C AMF3 serializer/parser
+- flexible C language data API to implement AMF data types
+- C++ ports of the aforementioned components
+
+See the architecture.png image for details.
