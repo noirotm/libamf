@@ -180,9 +180,13 @@ TEST(StringTest, AssignConstructorWorks) {
     EXPECT_EQ("tototest", static_cast<std::string>(s));
 }
 
-} // namespace
-
-int main(int argc, char ** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+TEST(ArrayTest, ConstructorWorks) {
+    amf::array a;
+    std::vector<counted_ptr<amf::data>> & vec = *a;
+    vec.push_back(new amf::integer(5));
+    ASSERT_EQ(1, a->size());
+    EXPECT_EQ(amf::TYPE_INTEGER, vec[0]->getType());
+    //EXPECT_EQ(5, (amf::integer)(vec[0]));
 }
+
+} // namespace

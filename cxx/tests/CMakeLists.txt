@@ -1,4 +1,4 @@
-add_library(gtest STATIC gtest/gtest.cpp gtest/gtest.h)
+add_library(gtest STATIC gtest/gtest.cpp gtest/gtest_main.cpp gtest/gtest.h)
 
 include_directories(${CMAKE_SOURCE_DIR}/tests)
 
@@ -8,6 +8,6 @@ macro(ADD_GTEST test)
   target_link_libraries(${test} amf gtest)
 endmacro(ADD_GTEST)
 
-include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
 
 ADD_GTEST(test_data)
