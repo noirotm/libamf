@@ -94,13 +94,13 @@ size_t amf0_data_write(amf0_data * data, write_proc_t write_proc, void * user_da
 /* allocate an AMF data object */
 amf0_data * amf0_data_new(uint8_t type);
 /* load AMF data from buffer */
-amf0_data * amf0_data_buffer_read(void * buffer, size_t maxbytes);
+amf0_data * amf0_data_buffer_read(uint8_t * buffer, size_t maxbytes);
 /* load AMF data from stream */
 amf0_data * amf0_data_file_read(FILE * stream);
 /* AMF data size */
 size_t     amf0_data_size(amf0_data * data);
 /* write encoded AMF data into a buffer */
-size_t     amf0_data_buffer_write(amf0_data * data, void * buffer, size_t maxbytes);
+size_t     amf0_data_buffer_write(amf0_data * data, uint8_t * buffer, size_t maxbytes);
 /* write encoded AMF data into a stream */
 size_t     amf0_data_file_write(amf0_data * data, FILE * stream);
 /* get the type of AMF data */
