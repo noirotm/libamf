@@ -54,13 +54,13 @@ private:
     std::unique_ptr<data_impl> m_data_impl;
 public:
     data();
+    ~data();
+    
     data(data_type t);
     data(bool);
     data(int);
     data(const std::string &);
     data(const char *);
-
-    ~data();
 
     data_type type() const;
 

@@ -8,10 +8,15 @@ data::data(): m_data_impl(new null_impl) {
     // default type is null
 }
 
+data::~data() {
+    // the unique_pointer class automatically destroys the object
+}
+
 data::data(data_type t) {
     switch (t) {
     case TYPE_UNDEFINED:
-    default: m_data_impl(new null_impl); break;
+    case TYPE_NULL:
+    default: m_data_impl.reset(new null_impl); break;
     }
 }
 
@@ -31,6 +36,18 @@ data_type data::type() const {
     return m_data_impl->type();
 }
 
-data::~data() {
-    // the unique_pointer class automatically destroys the object
+std::string data::as_string() const {
+    return m_data_impl->as_string();
+}
+
+int data::as_int() const {
+    return m_data_impl->as_int();
+}
+
+bool data::as_bool() const {
+    return m_data_impl->as_bool();
+}
+
+double data::as_double() const {
+    return m_data_impl->as_double();
 }
