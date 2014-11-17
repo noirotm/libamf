@@ -237,6 +237,7 @@ static amf0_data * amf0_object_read(read_proc_t read_proc, void * user_data) {
                         amf0_data_free(data);
                         return NULL;
                     }
+                    amf0_data_free(name);
                 }
                 else {
                     amf0_data_free(name);
@@ -278,6 +279,7 @@ static amf0_data * amf0_associative_array_read(read_proc_t read_proc, void * use
                         amf0_data_free(name);
                         break;
                     }
+                    amf0_data_free(name);
                 }
                 else {
                     /* invalid name: error */
