@@ -5,7 +5,7 @@
 
 typedef void (*data_free_proc)(void *);
 
-typedef struct __ptrarray {
+typedef struct ptrarray_t {
     size_t capacity;
     size_t size;
     void ** data;

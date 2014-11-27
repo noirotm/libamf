@@ -4,7 +4,7 @@
 #include "amf.h"
 
 /* structure used to mimic a stream with a memory buffer */
-typedef struct __buffer_context {
+typedef struct buffer_context_t {
     uint8_t * start_address;
     uint8_t * current_address;
     size_t buffer_size;

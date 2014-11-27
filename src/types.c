@@ -27,7 +27,7 @@
 #ifndef WORDS_BIGENDIAN
 
 /* swap 64 bits doubles */
-typedef union __convert_u {
+typedef union convert_u_t {
     uint64_t i;
     number64_t f;
 } convert_u;

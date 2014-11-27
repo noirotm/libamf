@@ -35,41 +35,41 @@
 #define AMF0_ERROR_UNSUPPORTED_TYPE     0x06
 
 /* a node wraps AMF data in a list, used for iteration */
-typedef struct __amf0_node * p_amf0_node;
+typedef struct amf0_node_t * p_amf0_node;
 
 /* string type */
-typedef struct __amf0_string {
+typedef struct amf0_string_t {
     uint16_t size;
     uint8_t * mbstr;
 } amf0_string;
 
 /* array type */
-typedef struct __amf0_list {
+typedef struct amf0_list_t {
     uint32_t size;
     p_amf0_node first_element;
     p_amf0_node last_element;
 } amf0_list;
 
 /* date type */
-typedef struct __amf0_date {
+typedef struct amf0_date_t {
     number64_t milliseconds;
     int16_t timezone;
 } amf0_date;
 
 /* XML string type */
-typedef struct __amf0_xmlstring {
+typedef struct amf0_xmlstring_t {
     uint32_t size;
     uint8_t * mbstr;
 } amf0_xmlstring;
 
 /* class type */
-typedef struct __amf0_class {
+typedef struct amf0_class_t {
     amf0_string name;
     amf0_list elements;
 } amf0_class;
 
 /* structure encapsulating the various AMF objects */
-typedef struct __amf0_data {
+typedef struct amf0_data_t {
     uint8_t type;
     uint8_t error_code;
     union {
@@ -84,7 +84,7 @@ typedef struct __amf0_data {
 } amf0_data;
 
 /* node used in lists, relies on amf0_data */
-typedef struct __amf0_node {
+typedef struct amf0_node_t {
     amf0_data * data;
     p_amf0_node prev;
     p_amf0_node next;
