@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 2.6)
 project(libamf C)
 
+set(LIBAMF_VERSION "0.2.0")
+
 # generic variables
 set(PACKAGE           "libamf")
 set(PACKAGE_NAME      ${PACKAGE})
-set(PACKAGE_BUGREPORT "libamf@sf.net")
-set(PACKAGE_VERSION   "0.1.0")
+set(PACKAGE_BUGREPORT "marc.noirot@gmail.com") # TODO create a google group for libamf
+set(PACKAGE_VERSION   "${LIBAMF_VERSION}")
 set(PACKAGE_STRING    "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 
 #platform tests
