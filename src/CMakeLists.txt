@@ -1,12 +1,12 @@
 set(libamf_src
   amf0.c
   amf0.h
-  hash.c
-  hash.h
+  #hash.c
+  #hash.h
   io.c
   io.h
-  ptrarray.c
-  ptrarray.h
+  #ptrarray.c
+  #ptrarray.h
   types.c
   types.h
   ${CMAKE_BINARY_DIR}/amf.h
