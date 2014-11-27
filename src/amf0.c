@@ -14,7 +14,7 @@ static void amf0_list_init(amf0_list * list) {
 }
 
 static amf0_data * amf0_list_push(amf0_list * list, amf0_data * data) {
-    amf0_node * node = (amf0_node*)malloc(sizeof(amf0_node));
+    amf0_node * node = malloc(sizeof(amf0_node));
     if (node != NULL) {
         node->data = data;
         node->next = NULL;
@@ -36,7 +36,7 @@ static amf0_data * amf0_list_push(amf0_list * list, amf0_data * data) {
 
 static amf0_data * amf0_list_insert_before(amf0_list * list, amf0_node * node, amf0_data * data) {
     if (node != NULL) {
-        amf0_node * new_node = (amf0_node*)malloc(sizeof(amf0_node));
+        amf0_node * new_node = malloc(sizeof(amf0_node));
         if (new_node != NULL) {
             new_node->next = node;
             new_node->prev = node->prev;
@@ -58,7 +58,7 @@ static amf0_data * amf0_list_insert_before(amf0_list * list, amf0_node * node, a
 
 static amf0_data * amf0_list_insert_after(amf0_list * list, amf0_node * node, amf0_data * data) {
     if (node != NULL) {
-        amf0_node * new_node = (amf0_node*)malloc(sizeof(amf0_node));
+        amf0_node * new_node = malloc(sizeof(amf0_node));
         if (new_node != NULL) {
             new_node->next = node->next;
             new_node->prev = node;
@@ -157,7 +157,7 @@ static amf0_data * amf0_data_error(uint8_t error_code) {
 
 /* allocate an AMF data object */
 amf0_data * amf0_data_new(uint8_t type) {
-    amf0_data * data = (amf0_data*)malloc(sizeof(amf0_data));
+    amf0_data * data = malloc(sizeof(amf0_data));
     if (data != NULL) {
         data->type = type;
         data->error_code = AMF0_ERROR_OK;
@@ -227,7 +227,7 @@ static amf0_data * amf0_string_read(read_proc_t read_proc, void * user_data) {
         return amf0_string_new(NULL, 0);
     }
 
-    buffer = (uint8_t*)calloc(strsize, sizeof(uint8_t));
+    buffer = calloc(strsize, sizeof(uint8_t));
     if (buffer == NULL) {
         return NULL;
     }
@@ -895,7 +895,7 @@ amf0_data * amf0_string_new(uint8_t * str, uint16_t size) {
     amf0_data * data = amf0_data_new(AMF0_TYPE_STRING);
     if (data != NULL) {
         data->string_data.size = (str == NULL) ? 0 : size;
-        data->string_data.mbstr = (uint8_t*)calloc(size+1, sizeof(uint8_t));
+        data->string_data.mbstr = calloc(size+1, sizeof(uint8_t));
         if (data->string_data.mbstr != NULL) {
             if (data->string_data.size > 0) {
                 memcpy(data->string_data.mbstr, str, data->string_data.size);
