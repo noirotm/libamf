@@ -100,7 +100,7 @@ static amf0_data * amf0_list_delete(amf0_list * list, amf0_node * node) {
     return data;
 }
 
-static amf0_data * amf0_list_get_at(amf0_list * list, uint32_t n) {
+static amf0_data * amf0_list_get_at(const amf0_list * list, uint32_t n) {
     if (n < list->size) {
         uint32_t i;
         amf0_node * node = list->first_element;
@@ -116,11 +116,11 @@ static amf0_data * amf0_list_pop(amf0_list * list) {
     return amf0_list_delete(list, list->last_element);
 }
 
-static amf0_node * amf0_list_first(amf0_list * list) {
+static amf0_node * amf0_list_first(const amf0_list * list) {
     return list->first_element;
 }
 
-static amf0_node * amf0_list_last(amf0_list * list) {
+static amf0_node * amf0_list_last(const amf0_list * list) {
     return list->last_element;
 }
 
@@ -136,7 +136,7 @@ static void amf0_list_clear(amf0_list * list) {
     list->size = 0;
 }
 
-static amf0_list * amf0_list_clone(amf0_list * list, amf0_list * out_list) {
+static amf0_list * amf0_list_clone(const amf0_list * list, amf0_list * out_list) {
     amf0_node * node;
     node = list->first_element;
     while (node != NULL) {
@@ -146,11 +146,21 @@ static amf0_list * amf0_list_clone(amf0_list * list, amf0_list * out_list) {
     return out_list;
 }
 
+/* return a null AMF object with the specified error code attached to it */
+static amf0_data * amf0_data_error(uint8_t error_code) {
+    amf0_data * data = amf0_null_new();
+    if (data != NULL) {
+        data->error_code = error_code;
+    }
+    return data;
+}
+
 /* allocate an AMF data object */
 amf0_data * amf0_data_new(uint8_t type) {
     amf0_data * data = (amf0_data*)malloc(sizeof(amf0_data));
     if (data != NULL) {
         data->type = type;
+        data->error_code = AMF0_ERROR_OK;
     }
     return data;
 }
@@ -164,7 +174,7 @@ amf0_data * amf0_data_buffer_read(uint8_t * buffer, size_t maxbytes) {
 }
 
 /* write AMF data to buffer */
-size_t amf0_data_buffer_write(amf0_data * data, uint8_t * buffer, size_t maxbytes) {
+size_t amf0_data_buffer_write(const amf0_data *data, uint8_t * buffer, size_t maxbytes) {
     buffer_context ctxt;
     ctxt.start_address = ctxt.current_address = buffer;
     ctxt.buffer_size = maxbytes;
@@ -177,7 +187,7 @@ amf0_data * amf0_data_file_read(FILE * stream) {
 }
 
 /* write AMF data into a file stream */
-size_t amf0_data_file_write(amf0_data * data, FILE * stream) {
+size_t amf0_data_file_write(const amf0_data *data, FILE * stream) {
     return amf0_data_write(data, file_write, stream);
 }
 
@@ -187,7 +197,9 @@ static amf0_data * amf0_number_read(read_proc_t read_proc, void * user_data) {
     if (read_proc(&val, sizeof(number64_t), user_data) == sizeof(number64_t)) {
         return amf0_number_new(swap_number64(val));
     }
-    return NULL;
+    else {
+        return amf0_data_error(AMF0_ERROR_EOF);
+    }
 }
 
 /* read a boolean */
@@ -196,103 +208,148 @@ static amf0_data * amf0_boolean_read(read_proc_t read_proc, void * user_data) {
     if (read_proc(&val, sizeof(uint8_t), user_data) == sizeof(uint8_t)) {
         return amf0_boolean_new(val);
     }
-    return NULL;
+    else {
+        return amf0_data_error(AMF0_ERROR_EOF);
+    }
 }
 
 /* read a string */
 static amf0_data * amf0_string_read(read_proc_t read_proc, void * user_data) {
     uint16_t strsize;
     uint8_t * buffer;
-    if (read_proc(&strsize, sizeof(uint16_t), user_data) == sizeof(uint16_t)) {
-        strsize = swap_uint16(strsize);
-        if (strsize > 0) {
-            buffer = (uint8_t*)calloc(strsize, sizeof(uint8_t));
-            if (buffer != NULL && read_proc(buffer, strsize, user_data) == strsize) {
-                amf0_data * data = amf0_string_new(buffer, strsize);
-                free(buffer);
-                return data;
-            }
-        }
-        else {
-            return amf0_string_new(NULL, 0);
-        }
+
+    if (read_proc(&strsize, sizeof(uint16_t), user_data) < sizeof(uint16_t)) {
+        return amf0_data_error(AMF0_ERROR_EOF);
     }
-    return NULL;
+
+    strsize = swap_uint16(strsize);
+    if (strsize == 0) {
+        return amf0_string_new(NULL, 0);
+    }
+
+    buffer = (uint8_t*)calloc(strsize, sizeof(uint8_t));
+    if (buffer == NULL) {
+        return NULL;
+    }
+
+    if (read_proc(buffer, strsize, user_data) == strsize) {
+        amf0_data * data = amf0_string_new(buffer, strsize);
+        free(buffer);
+        return data;
+    }
+    else {
+        free(buffer);
+        return amf0_data_error(AMF0_ERROR_EOF);
+    }
 }
 
 /* read an object */
 static amf0_data * amf0_object_read(read_proc_t read_proc, void * user_data) {
-    amf0_data * data = amf0_object_new();
-    if (data != NULL) {
-        amf0_data * name;
-        amf0_data * element;
-        while (1) {
-            name = amf0_string_read(read_proc, user_data);
-            if (name != NULL) {
-                element = amf0_data_read(read_proc, user_data);
-                if (element != NULL) {
-                    if (amf0_object_add(data, (char *)amf0_string_get_uint8_ts(name), element) == NULL) {
-                        amf0_data_free(name);
-                        amf0_data_free(element);
-                        amf0_data_free(data);
-                        return NULL;
-                    }
-                    amf0_data_free(name);
-                }
-                else {
-                    amf0_data_free(name);
-                    break;
-                }
-            }
-            else {
-                /* invalid name: error */
-                amf0_data_free(data);
-                return NULL;
-            }
+    amf0_data * name;
+    amf0_data * element;
+    uint8_t error_code;
+    amf0_data * data;
+
+    data = amf0_object_new();
+    if (data == NULL) {
+        return NULL;
+    }
+
+    while (1) {
+        name = amf0_string_read(read_proc, user_data);
+        error_code = amf0_data_get_error(name);
+        if (error_code != AMF0_ERROR_OK) {
+            /* invalid name: error */
+            amf0_data_free(name);
+            amf0_data_free(data);
+            return amf0_data_error(error_code);
+        }
+
+        element = amf0_data_read(read_proc, user_data);
+        error_code = amf0_data_get_error(element);
+        if (error_code == AMF0_ERROR_END_TAG || error_code == AMF0_ERROR_UNKNOWN_TYPE) {
+            /* end tag or unknown element: end of data, exit loop */
+            amf0_data_free(name);
+            amf0_data_free(element);
+            break;
+        }
+        else if (error_code != AMF0_ERROR_OK) {
+            amf0_data_free(name);
+            amf0_data_free(data);
+            amf0_data_free(element);
+            return amf0_data_error(error_code);
+        }
+
+        if (amf0_object_add(data, (char *)amf0_string_get_bytes(name), element) == NULL) {
+            amf0_data_free(name);
+            amf0_data_free(element);
+            amf0_data_free(data);
+            return NULL;
+        }
+        else {
+            amf0_data_free(name);
         }
     }
+
     return data;
 }
 
 /* read an associative array */
 static amf0_data * amf0_associative_array_read(read_proc_t read_proc, void * user_data) {
-    amf0_data * data = amf0_associative_array_new();
-    if (data != NULL) {
-        amf0_data * name;
-        amf0_data * element;
-        uint32_t size;
-        if (read_proc(&size, sizeof(uint32_t), user_data) == sizeof(uint32_t)) {
-            /* we ignore the 32 bits array size marker */
-            while(1) {
-                name = amf0_string_read(read_proc, user_data);
-                if (name != NULL) {
-                    element = amf0_data_read(read_proc, user_data);
-                    if (element != NULL) {
-                        if (amf0_associative_array_add(data, (char *)amf0_string_get_uint8_ts(name), element) == NULL) {
-                            amf0_data_free(name);
-                            amf0_data_free(element);
-                            amf0_data_free(data);
-                            return NULL;
-                        }
-                    }
-                    else {
-                        amf0_data_free(name);
-                        break;
-                    }
-                    amf0_data_free(name);
-                }
-                else {
-                    /* invalid name: error */
-                    amf0_data_free(data);
-                    return NULL;
-                }
-            }
+    amf0_data * name;
+    amf0_data * element;
+    uint32_t size;
+    uint8_t error_code;
+    amf0_data * data;
+
+    data = amf0_associative_array_new();
+    if (data == NULL) {
+        return NULL;
+    }
+
+    /* we ignore the 32 bits array size marker */
+    if (read_proc(&size, sizeof(uint32_t), user_data) < sizeof(uint32_t)) {
+        amf0_data_free(data);
+        return amf0_data_error(AMF0_ERROR_EOF);
+    }
+
+    while(1) {
+        name = amf0_string_read(read_proc, user_data);
+        error_code = amf0_data_get_error(name);
+        if (error_code != AMF0_ERROR_OK) {
+            /* invalid name: error */
+            amf0_data_free(name);
+            amf0_data_free(data);
+            return amf0_data_error(error_code);
         }
-        else {
+
+        element = amf0_data_read(read_proc, user_data);
+        error_code = amf0_data_get_error(element);
+
+        if (amf0_string_get_size(name) == 0 || error_code == AMF0_ERROR_END_TAG || error_code == AMF0_ERROR_UNKNOWN_TYPE) {
+            /* end tag or unknown element: end of data, exit loop */
+            amf0_data_free(name);
+            amf0_data_free(element);
+            break;
+        }
+        else if (error_code != AMF0_ERROR_OK) {
+            amf0_data_free(name);
+            amf0_data_free(data);
+            amf0_data_free(element);
+            return amf0_data_error(error_code);
+        }
+
+        if (amf0_associative_array_add(data, (char *)amf0_string_get_bytes(name), element) == NULL) {
+            amf0_data_free(name);
+            amf0_data_free(element);
             amf0_data_free(data);
             return NULL;
         }
+        else {
+            amf0_data_free(name);
+        }
     }
+
     return data;
 }
 
@@ -300,33 +357,38 @@ static amf0_data * amf0_associative_array_read(read_proc_t read_proc, void * use
 static amf0_data * amf0_array_read(read_proc_t read_proc, void * user_data) {
     size_t i;
     amf0_data * element;
-    amf0_data * data = amf0_array_new();
-    if (data != NULL) {
-        uint32_t array_size;
-        if (read_proc(&array_size, sizeof(uint32_t), user_data) == sizeof(uint32_t)) {
-            array_size = swap_uint32(array_size);
-            
-            for (i = 0; i < array_size; ++i) {
-                element = amf0_data_read(read_proc, user_data);
+    uint8_t error_code;
+    amf0_data * data;
+    uint32_t array_size;
 
-                if (element != NULL) {
-                    if (amf0_array_push(data, element) == NULL) {
-                        amf0_data_free(element);
-                        amf0_data_free(data);
-                        return NULL;
-                    }
-                }
-                else {
-                    amf0_data_free(data);
-                    return NULL;
-                }
-            }
+    data = amf0_array_new();
+    if (data == NULL) {
+        return NULL;
+    }
+
+    if (read_proc(&array_size, sizeof(uint32_t), user_data) < sizeof(uint32_t)) {
+        amf0_data_free(data);
+        return amf0_data_error(AMF0_ERROR_EOF);
+    }
+
+    array_size = swap_uint32(array_size);
+
+    for (i = 0; i < array_size; ++i) {
+        element = amf0_data_read(read_proc, user_data);
+        error_code = amf0_data_get_error(element);
+        if (error_code != AMF0_ERROR_OK) {
+            amf0_data_free(element);
+            amf0_data_free(data);
+            return amf0_data_error(error_code);
         }
-        else {
+
+        if (amf0_array_push(data, element) == NULL) {
+            amf0_data_free(element);
             amf0_data_free(data);
             return NULL;
         }
     }
+
     return data;
 }
 
@@ -339,7 +401,7 @@ static amf0_data * amf0_date_read(read_proc_t read_proc, void * user_data) {
         return amf0_date_new(swap_number64(milliseconds), swap_sint16(timezone));
     }
     else {
-        return NULL;
+        return amf0_data_error(AMF0_ERROR_EOF);
     }
 }
 
@@ -356,22 +418,28 @@ amf0_data * amf0_data_read(read_proc_t read_proc, void * user_data) {
                 return amf0_string_read(read_proc, user_data);
             case AMF0_TYPE_OBJECT:
                 return amf0_object_read(read_proc, user_data);
+            case AMF0_TYPE_MOVIECLIP:
+                return NULL; /* not supported */
             case AMF0_TYPE_NULL:
                 return amf0_null_new();
             case AMF0_TYPE_UNDEFINED:
                 return amf0_undefined_new();
-            /*case AMF0_TYPE_REFERENCE:*/
+            case AMF0_TYPE_REFERENCE: /* TODO */
+                return NULL;
             case AMF0_TYPE_ECMA_ARRAY:
                 return amf0_associative_array_read(read_proc, user_data);
+            case AMF0_TYPE_OBJECT_END:
+                return NULL; /* end of composite object */
             case AMF0_TYPE_STRICT_ARRAY:
                 return amf0_array_read(read_proc, user_data);
             case AMF0_TYPE_DATE:
                 return amf0_date_read(read_proc, user_data);
-            /*case AMF0_TYPE_SIMPLEOBJECT:*/
-            case AMF0_TYPE_XML_DOCUMENT:
-            case AMF0_TYPE_TYPED_OBJECT:
-            case AMF0_TYPE_OBJECT_END:
-                return NULL; /* end of composite object */
+            case AMF0_TYPE_LONG_STRING: /* TODO */
+            case AMF0_TYPE_UNSUPPORTED: /* TODO */
+            case AMF0_TYPE_RECORDSET: /* not supported */
+            case AMF0_TYPE_XML_DOCUMENT: /* TODO */
+            case AMF0_TYPE_TYPED_OBJECT: /* TODO */
+                return NULL;
             default:
                 break;
         }
@@ -380,7 +448,7 @@ amf0_data * amf0_data_read(read_proc_t read_proc, void * user_data) {
 }
 
 /* determines the size of the given AMF data */
-size_t amf0_data_size(amf0_data * data) {
+size_t amf0_data_size(const amf0_data *data) {
     size_t s = 0;
     amf0_node * node;
     if (data != NULL) {
@@ -404,10 +472,11 @@ size_t amf0_data_size(amf0_data * data) {
                 }
                 s += sizeof(uint16_t) + sizeof(uint8_t);
                 break;
+            case AMF0_TYPE_MOVIECLIP: /* not supported */
             case AMF0_TYPE_NULL:
             case AMF0_TYPE_UNDEFINED:
+            case AMF0_TYPE_REFERENCE: /* TODO */
                 break;
-            /*case AMF0_TYPE_REFERENCE:*/
             case AMF0_TYPE_ECMA_ARRAY:
                 s += sizeof(uint32_t);
                 node = amf0_associative_array_first(data);
@@ -418,6 +487,8 @@ size_t amf0_data_size(amf0_data * data) {
                 }
                 s += sizeof(uint16_t) + sizeof(uint8_t);
                 break;
+            case AMF0_TYPE_OBJECT_END:
+                break; /* end of composite object */
             case AMF0_TYPE_STRICT_ARRAY:
                 s += sizeof(uint32_t);
                 node = amf0_array_first(data);
@@ -429,11 +500,11 @@ size_t amf0_data_size(amf0_data * data) {
             case AMF0_TYPE_DATE:
                 s += sizeof(number64_t) + sizeof(int16_t);
                 break;
-            /*case AMF0_TYPE_SIMPLEOBJECT:*/
-            case AMF0_TYPE_XML_DOCUMENT:
-            case AMF0_TYPE_TYPED_OBJECT:
-            case AMF0_TYPE_OBJECT_END:
-                break; /* end of composite object */
+            case AMF0_TYPE_LONG_STRING: /* TODO */
+            case AMF0_TYPE_UNSUPPORTED: /* TODO */
+            case AMF0_TYPE_RECORDSET: /* not supported */
+            case AMF0_TYPE_XML_DOCUMENT: /* TODO */
+            case AMF0_TYPE_TYPED_OBJECT: /* TODO */
             default:
                 break;
         }
@@ -442,18 +513,18 @@ size_t amf0_data_size(amf0_data * data) {
 }
 
 /* write a number */
-static size_t amf0_number_write(amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_number_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
     number64_t n = swap_number64(data->number_data);
     return write_proc(&n, sizeof(number64_t), user_data);
 }
 
 /* write a boolean */
-static size_t amf0_boolean_write(amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_boolean_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
     return write_proc(&(data->boolean_data), sizeof(uint8_t), user_data);
 }
 
 /* write a string */
-static size_t amf0_string_write(amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_string_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
     uint16_t s;
     size_t w = 0;
 
@@ -467,7 +538,7 @@ static size_t amf0_string_write(amf0_data * data, write_proc_t write_proc, void 
 }
 
 /* write an object */
-static size_t amf0_object_write(amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_object_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
     amf0_node * node;
     size_t w = 0;
     uint16_t filler = swap_uint16(0);
@@ -489,7 +560,7 @@ static size_t amf0_object_write(amf0_data * data, write_proc_t write_proc, void 
 }
 
 /* write an associative array */
-static size_t amf0_associative_array_write(amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_associative_array_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
     amf0_node * node;
     size_t w = 0;
     uint32_t s;
@@ -514,7 +585,7 @@ static size_t amf0_associative_array_write(amf0_data * data, write_proc_t write_
 }
 
 /* write an array */
-static size_t amf0_array_write(amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_array_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
     amf0_node * node;
     size_t w = 0;
     uint32_t s;
@@ -531,7 +602,7 @@ static size_t amf0_array_write(amf0_data * data, write_proc_t write_proc, void *
 }
 
 /* write a date */
-static size_t amf0_date_write(amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_date_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
     size_t w = 0;
     number64_t milli;
     int16_t tz;
@@ -545,7 +616,7 @@ static size_t amf0_date_write(amf0_data * data, write_proc_t write_proc, void * 
 }
 
 /* write amf data to stream */
-size_t amf0_data_write(amf0_data * data, write_proc_t write_proc, void * user_data) {
+size_t amf0_data_write(const amf0_data *data, write_proc_t write_proc, void * user_data) {
     size_t s = 0;
     if (data != NULL) {
         s += write_proc(&(data->type), sizeof(uint8_t), user_data);
@@ -562,24 +633,28 @@ size_t amf0_data_write(amf0_data * data, write_proc_t write_proc, void * user_da
             case AMF0_TYPE_OBJECT:
                 s += amf0_object_write(data, write_proc, user_data);
                 break;
+            case AMF0_TYPE_MOVIECLIP: /* not supported */
             case AMF0_TYPE_NULL:
             case AMF0_TYPE_UNDEFINED:
                 break;
-            /*case AMF0_TYPE_REFERENCE:*/
+            case AMF0_TYPE_REFERENCE: /* TODO */
+                break;
             case AMF0_TYPE_ECMA_ARRAY:
                 s += amf0_associative_array_write(data, write_proc, user_data);
                 break;
+            case AMF0_TYPE_OBJECT_END:
+                break; /* end of composite object */
             case AMF0_TYPE_STRICT_ARRAY:
                 s += amf0_array_write(data, write_proc, user_data);
                 break;
             case AMF0_TYPE_DATE:
                 s += amf0_date_write(data, write_proc, user_data);
                 break;
-            /*case AMF0_TYPE_SIMPLEOBJECT:*/
-            case AMF0_TYPE_XML_DOCUMENT:
-            case AMF0_TYPE_TYPED_OBJECT:
-            case AMF0_TYPE_OBJECT_END:
-                break; /* end of composite object */
+            case AMF0_TYPE_LONG_STRING: /* TODO */
+            case AMF0_TYPE_UNSUPPORTED: /* TODO */
+            case AMF0_TYPE_RECORDSET: /* not supported */
+            case AMF0_TYPE_XML_DOCUMENT: /* TODO */
+            case AMF0_TYPE_TYPED_OBJECT: /* TODO */
             default:
                 break;
         }
@@ -588,12 +663,17 @@ size_t amf0_data_write(amf0_data * data, write_proc_t write_proc, void * user_da
 }
 
 /* data type */
-uint8_t amf0_data_get_type(amf0_data * data) {
+uint8_t amf0_data_get_type(const amf0_data *data) {
     return (data != NULL) ? data->type : AMF0_TYPE_NULL;
 }
 
+/* error code */
+uint8_t amf0_data_get_error(const amf0_data * data) {
+    return (data != NULL) ? data->error_code : AMF0_ERROR_NULL_POINTER;
+}
+
 /* clone AMF data */
-amf0_data * amf0_data_clone(amf0_data * data) {
+amf0_data * amf0_data_clone(const amf0_data *data) {
     /* we copy data recursively */
     if (data != NULL) {
         switch (data->type) {
@@ -601,14 +681,18 @@ amf0_data * amf0_data_clone(amf0_data * data) {
             case AMF0_TYPE_BOOLEAN: return amf0_boolean_new(amf0_boolean_get_value(data));
             case AMF0_TYPE_STRING:
                 if (data->string_data.mbstr != NULL) {
-                    return amf0_string_new((uint8_t *)strdup((char *)amf0_string_get_uint8_ts(data)), amf0_string_get_size(data));
+                    return amf0_string_new((uint8_t *)strdup((char *)amf0_string_get_bytes(data)), amf0_string_get_size(data));
                 }
                 else {
                     return amf0_str(NULL);
                 }
-            case AMF0_TYPE_NULL: return NULL;
-            case AMF0_TYPE_UNDEFINED: return NULL;
-            /*case AMF0_TYPE_REFERENCE:*/
+            case AMF0_TYPE_MOVIECLIP: /* not supported */
+            case AMF0_TYPE_NULL:
+            case AMF0_TYPE_UNDEFINED:
+            case AMF0_TYPE_REFERENCE: /* TODO */
+            case AMF0_TYPE_OBJECT_END:
+                return NULL;
+
             case AMF0_TYPE_OBJECT:
             case AMF0_TYPE_ECMA_ARRAY:
             case AMF0_TYPE_STRICT_ARRAY:
@@ -620,10 +704,15 @@ amf0_data * amf0_data_clone(amf0_data * data) {
                     }
                     return d;
                 }
+
             case AMF0_TYPE_DATE: return amf0_date_new(amf0_date_get_milliseconds(data), amf0_date_get_timezone(data));
-            /*case AMF0_TYPE_SIMPLEOBJECT:*/
-            case AMF0_TYPE_XML_DOCUMENT: return NULL;
-            case AMF0_TYPE_TYPED_OBJECT: return NULL;
+            case AMF0_TYPE_LONG_STRING: /* TODO */
+            case AMF0_TYPE_UNSUPPORTED: /* TODO */
+            case AMF0_TYPE_RECORDSET: /* not supported */
+            case AMF0_TYPE_XML_DOCUMENT: /* TODO */
+            case AMF0_TYPE_TYPED_OBJECT: /* TODO */
+            default:
+                return NULL;
         }
     }
     return NULL;
@@ -639,24 +728,34 @@ void amf0_data_free(amf0_data * data) {
                 if (data->string_data.mbstr != NULL) {
                     free(data->string_data.mbstr);
                 } break;
-            case AMF0_TYPE_NULL: break;
-            case AMF0_TYPE_UNDEFINED: break;
-            /*case AMF0_TYPE_REFERENCE:*/
+            case AMF0_TYPE_MOVIECLIP: /* not supported */
+            case AMF0_TYPE_NULL:
+            case AMF0_TYPE_UNDEFINED:
+            case AMF0_TYPE_REFERENCE: /* TODO */
+            case AMF0_TYPE_OBJECT_END:
+                break;
+
             case AMF0_TYPE_OBJECT:
             case AMF0_TYPE_ECMA_ARRAY:
-            case AMF0_TYPE_STRICT_ARRAY: amf0_list_clear(&data->list_data); break;
+            case AMF0_TYPE_STRICT_ARRAY:
+                amf0_list_clear(&data->list_data);
+                break;
+
             case AMF0_TYPE_DATE: break;
-            /*case AMF0_TYPE_SIMPLEOBJECT:*/
-            case AMF0_TYPE_XML_DOCUMENT: break;
-            case AMF0_TYPE_TYPED_OBJECT: break;
-            default: break;
+            case AMF0_TYPE_LONG_STRING: /* TODO */
+            case AMF0_TYPE_UNSUPPORTED: /* TODO */
+            case AMF0_TYPE_RECORDSET: /* not supported */
+            case AMF0_TYPE_XML_DOCUMENT: /* TODO */
+            case AMF0_TYPE_TYPED_OBJECT: /* TODO */
+            default:
+                break;
         }
         free(data);
     }
 }
 
 /* dump AMF data into a stream as text */
-void amf0_data_dump(FILE * stream, amf0_data * data, int indent_level) {
+void amf0_data_dump(FILE * stream, const amf0_data *data, int indent_level) {
     if (data != NULL) {
         amf0_node * node;
         time_t time;
@@ -685,13 +784,18 @@ void amf0_data_dump(FILE * stream, amf0_data * data, int indent_level) {
                 }
                 fprintf(stream, "%*s", indent_level*4 + 1, "}");
                 break;
+            case AMF0_TYPE_MOVIECLIP:
+                fprintf(stream, "[movieclip]");
+                break;
             case AMF0_TYPE_NULL:
                 fprintf(stream, "null");
                 break;
             case AMF0_TYPE_UNDEFINED:
                 fprintf(stream, "undefined");
                 break;
-            /*case AMF0_TYPE_REFERENCE:*/
+            case AMF0_TYPE_REFERENCE: /* TODO */
+                fprintf(stream, "[reference]");
+                break;
             case AMF0_TYPE_ECMA_ARRAY:
                 node = amf0_associative_array_first(data);
                 fprintf(stream, "{\n");
@@ -704,6 +808,9 @@ void amf0_data_dump(FILE * stream, amf0_data * data, int indent_level) {
                     fprintf(stream, "\n");
                 }
                 fprintf(stream, "%*s", indent_level*4 + 1, "}");
+                break;
+            case AMF0_TYPE_OBJECT_END:
+                fprintf(stream, "[object end]");
                 break;
             case AMF0_TYPE_STRICT_ARRAY:
                 node = amf0_array_first(data);
@@ -723,10 +830,24 @@ void amf0_data_dump(FILE * stream, amf0_data * data, int indent_level) {
                 strftime(datestr, sizeof(datestr), "%a, %d %b %Y %H:%M:%S %z", t);
                 fprintf(stream, "%s", datestr);
                 break;
-            /*case AMF0_TYPE_SIMPLEOBJECT:*/
-            case AMF0_TYPE_XML_DOCUMENT: break;
-            case AMF0_TYPE_TYPED_OBJECT: break;
-            default: break;
+            case AMF0_TYPE_LONG_STRING: /* TODO */
+                fprintf(stream, "[long string]");
+                break;
+            case AMF0_TYPE_UNSUPPORTED:
+                fprintf(stream, "[unsupported]");
+                break;
+            case AMF0_TYPE_RECORDSET:
+                fprintf(stream, "[recordset]");
+                break;
+            case AMF0_TYPE_XML_DOCUMENT: /* TODO */
+                fprintf(stream, "[xml document]");
+                break;
+            case AMF0_TYPE_TYPED_OBJECT: /* TODO */
+                fprintf(stream, "[typed object]");
+                break;
+            default:
+                fprintf(stream, "[unknown data type 0x%x]", data->type);
+                break;
         }
     }
 }
@@ -740,7 +861,7 @@ amf0_data * amf0_number_new(number64_t value) {
     return data;
 }
 
-number64_t amf0_number_get_value(amf0_data * data) {
+number64_t amf0_number_get_value(const amf0_data *data) {
     return (data != NULL) ? data->number_data : 0;
 }
 
@@ -759,7 +880,7 @@ amf0_data * amf0_boolean_new(uint8_t value) {
     return data;
 }
 
-uint8_t amf0_boolean_get_value(amf0_data * data) {
+uint8_t amf0_boolean_get_value(const amf0_data *data) {
     return (data != NULL) ? data->boolean_data : 0;
 }
 
@@ -773,11 +894,11 @@ void amf0_boolean_set_value(amf0_data * data, uint8_t value) {
 amf0_data * amf0_string_new(uint8_t * str, uint16_t size) {
     amf0_data * data = amf0_data_new(AMF0_TYPE_STRING);
     if (data != NULL) {
-        data->string_data.size = size;
+        data->string_data.size = (str == NULL) ? 0 : size;
         data->string_data.mbstr = (uint8_t*)calloc(size+1, sizeof(uint8_t));
         if (data->string_data.mbstr != NULL) {
-            if (size > 0) {
-                memcpy(data->string_data.mbstr, str, size);
+            if (data->string_data.size > 0) {
+                memcpy(data->string_data.mbstr, str, data->string_data.size);
             }
         }
         else {
@@ -792,11 +913,11 @@ amf0_data * amf0_str(const char * str) {
     return amf0_string_new((uint8_t *)str, (uint16_t)(str != NULL ? strlen(str) : 0));
 }
 
-uint16_t amf0_string_get_size(amf0_data * data) {
+uint16_t amf0_string_get_size(const amf0_data *data) {
     return (data != NULL) ? data->string_data.size : 0;
 }
 
-uint8_t * amf0_string_get_uint8_ts(amf0_data * data) {
+uint8_t * amf0_string_get_bytes(const amf0_data * data) {
     return (data != NULL) ? data->string_data.mbstr : NULL;
 }
 
@@ -827,7 +948,7 @@ amf0_data * amf0_object_add(amf0_data * data, const char * name, amf0_data * ele
     return NULL;
 }
 
-amf0_data * amf0_object_get(amf0_data * data, const char * name) {
+amf0_data * amf0_object_get(const amf0_data *data, const char * name) {
     if (data != NULL) {
         amf0_node * node = amf0_list_first(&(data->list_data));
         while (node != NULL) {
@@ -879,11 +1000,11 @@ amf0_data * amf0_object_delete(amf0_data * data, const char * name) {
     return NULL;
 }
 
-amf0_node * amf0_object_first(amf0_data * data) {
+amf0_node * amf0_object_first(const amf0_data *data) {
     return (data != NULL) ? amf0_list_first(&data->list_data) : NULL;
 }
 
-amf0_node * amf0_object_last(amf0_data * data) {
+amf0_node * amf0_object_last(const amf0_data *data) {
     if (data != NULL) {
         amf0_node * node = amf0_list_last(&data->list_data);
         if (node != NULL) {
@@ -893,7 +1014,7 @@ amf0_node * amf0_object_last(amf0_data * data) {
     return NULL;
 }
 
-amf0_node * amf0_object_next(amf0_node * node) {
+amf0_node * amf0_object_next(const amf0_node *node) {
     if (node != NULL) {
         amf0_node * next = node->next;
         if (next != NULL) {
@@ -903,7 +1024,7 @@ amf0_node * amf0_object_next(amf0_node * node) {
     return NULL;
 }
 
-amf0_node * amf0_object_prev(amf0_node * node) {
+amf0_node * amf0_object_prev(const amf0_node *node) {
     if (node != NULL) {
         amf0_node * prev = node->prev;
         if (prev != NULL) {
@@ -913,11 +1034,11 @@ amf0_node * amf0_object_prev(amf0_node * node) {
     return NULL;
 }
 
-amf0_data * amf0_object_get_name(amf0_node * node) {
+amf0_data * amf0_object_get_name(const amf0_node *node) {
     return (node != NULL) ? node->data : NULL;
 }
 
-amf0_data * amf0_object_get_data(amf0_node * node) {
+amf0_data * amf0_object_get_data(const amf0_node *node) {
     if (node != NULL) {
         amf0_node * next = node->next;
         if (next != NULL) {
@@ -945,7 +1066,7 @@ amf0_data * amf0_array_new(void) {
     return data;
 }
 
-uint32_t amf0_array_size(amf0_data * data) {
+uint32_t amf0_array_size(const amf0_data *data) {
     return (data != NULL) ? data->list_data.size : 0;
 }
 
@@ -957,27 +1078,27 @@ amf0_data * amf0_array_pop(amf0_data * data) {
     return (data != NULL) ? amf0_list_pop(&data->list_data) : NULL;
 }
 
-amf0_node * amf0_array_first(amf0_data * data) {
+amf0_node * amf0_array_first(const amf0_data *data) {
     return (data != NULL) ? amf0_list_first(&data->list_data) : NULL;
 }
 
-amf0_node * amf0_array_last(amf0_data * data) {
+amf0_node * amf0_array_last(const amf0_data *data) {
     return (data != NULL) ? amf0_list_last(&data->list_data) : NULL;
 }
 
-amf0_node * amf0_array_next(amf0_node * node) {
+amf0_node * amf0_array_next(const amf0_node *node) {
     return (node != NULL) ? node->next : NULL;
 }
 
-amf0_node * amf0_array_prev(amf0_node * node) {
+amf0_node * amf0_array_prev(const amf0_node *node) {
     return (node != NULL) ? node->prev : NULL;
 }
 
-amf0_data * amf0_array_get(amf0_node * node) {
+amf0_data * amf0_array_get(const amf0_node *node) {
     return (node != NULL) ? node->data : NULL;
 }
 
-amf0_data * amf0_array_get_at(amf0_data * data, uint32_t n) {
+amf0_data * amf0_array_get_at(const amf0_data *data, uint32_t n) {
     return (data != NULL) ? amf0_list_get_at(&data->list_data, n) : NULL;
 }
 
@@ -1003,14 +1124,14 @@ amf0_data * amf0_date_new(number64_t milliseconds, int16_t timezone) {
     return data;
 }
 
-number64_t amf0_date_get_milliseconds(amf0_data * data) {
+number64_t amf0_date_get_milliseconds(const amf0_data *data) {
     return (data != NULL) ? data->date_data.milliseconds : 0.0;
 }
 
-int16_t amf0_date_get_timezone(amf0_data * data) {
+int16_t amf0_date_get_timezone(const amf0_data *data) {
     return (data != NULL) ? data->date_data.timezone : 0;
 }
 
-time_t amf0_date_to_time_t(amf0_data * data) {
+time_t amf0_date_to_time_t(const amf0_data *data) {
     return (time_t)((data != NULL) ? data->date_data.milliseconds / 1000 : 0);
 }
