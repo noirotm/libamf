@@ -429,7 +429,7 @@ amf0_data * amf0_data_read(read_proc_t read_proc, void * user_data) {
             case AMF0_TYPE_ECMA_ARRAY:
                 return amf0_associative_array_read(read_proc, user_data);
             case AMF0_TYPE_OBJECT_END:
-                return NULL; /* end of composite object */
+                return amf0_data_error(AMF0_ERROR_END_TAG); /* end of composite object */
             case AMF0_TYPE_STRICT_ARRAY:
                 return amf0_array_read(read_proc, user_data);
             case AMF0_TYPE_DATE:
