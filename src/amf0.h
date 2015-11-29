@@ -95,10 +95,10 @@ extern "C" {
 #endif /* __cplusplus */
 
 /* read AMF data */
-amf0_data * amf0_data_read(read_proc_t read_proc, void * user_data);
+amf0_data * amf0_data_read(amf_read_proc_t read_proc, void * user_data);
 
 /* write AMF data */
-size_t amf0_data_write(const amf0_data * data, write_proc_t write_proc, void * user_data);
+size_t amf0_data_write(const amf0_data * data, amf_write_proc_t write_proc, void * user_data);
 
 /* generic functions */
 

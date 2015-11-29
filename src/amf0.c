@@ -192,7 +192,7 @@ size_t amf0_data_file_write(const amf0_data *data, FILE * stream) {
 }
 
 /* read a number */
-static amf0_data * amf0_number_read(read_proc_t read_proc, void * user_data) {
+static amf0_data * amf0_number_read(amf_read_proc_t read_proc, void * user_data) {
     number64_t val;
     if (read_proc(&val, sizeof(number64_t), user_data) == sizeof(number64_t)) {
         return amf0_number_new(swap_number64(val));
@@ -203,7 +203,7 @@ static amf0_data * amf0_number_read(read_proc_t read_proc, void * user_data) {
 }
 
 /* read a boolean */
-static amf0_data * amf0_boolean_read(read_proc_t read_proc, void * user_data) {
+static amf0_data * amf0_boolean_read(amf_read_proc_t read_proc, void * user_data) {
     uint8_t val;
     if (read_proc(&val, sizeof(uint8_t), user_data) == sizeof(uint8_t)) {
         return amf0_boolean_new(val);
@@ -214,7 +214,7 @@ static amf0_data * amf0_boolean_read(read_proc_t read_proc, void * user_data) {
 }
 
 /* read a string */
-static amf0_data * amf0_string_read(read_proc_t read_proc, void * user_data) {
+static amf0_data * amf0_string_read(amf_read_proc_t read_proc, void * user_data) {
     uint16_t strsize;
     uint8_t * buffer;
 
@@ -244,7 +244,7 @@ static amf0_data * amf0_string_read(read_proc_t read_proc, void * user_data) {
 }
 
 /* read an object */
-static amf0_data * amf0_object_read(read_proc_t read_proc, void * user_data) {
+static amf0_data * amf0_object_read(amf_read_proc_t read_proc, void * user_data) {
     amf0_data * name;
     amf0_data * element;
     uint8_t error_code;
@@ -295,7 +295,7 @@ static amf0_data * amf0_object_read(read_proc_t read_proc, void * user_data) {
 }
 
 /* read an associative array */
-static amf0_data * amf0_associative_array_read(read_proc_t read_proc, void * user_data) {
+static amf0_data * amf0_associative_array_read(amf_read_proc_t read_proc, void * user_data) {
     amf0_data * name;
     amf0_data * element;
     uint32_t size;
@@ -354,7 +354,7 @@ static amf0_data * amf0_associative_array_read(read_proc_t read_proc, void * use
 }
 
 /* read an array */
-static amf0_data * amf0_array_read(read_proc_t read_proc, void * user_data) {
+static amf0_data * amf0_array_read(amf_read_proc_t read_proc, void * user_data) {
     size_t i;
     amf0_data * element;
     uint8_t error_code;
@@ -393,7 +393,7 @@ static amf0_data * amf0_array_read(read_proc_t read_proc, void * user_data) {
 }
 
 /* read a date */
-static amf0_data * amf0_date_read(read_proc_t read_proc, void * user_data) {
+static amf0_data * amf0_date_read(amf_read_proc_t read_proc, void * user_data) {
     number64_t milliseconds;
     int16_t timezone;
     if (read_proc(&milliseconds, sizeof(number64_t), user_data) == sizeof(number64_t) &&
@@ -406,7 +406,7 @@ static amf0_data * amf0_date_read(read_proc_t read_proc, void * user_data) {
 }
 
 /* load AMF data from stream */
-amf0_data * amf0_data_read(read_proc_t read_proc, void * user_data) {
+amf0_data * amf0_data_read(amf_read_proc_t read_proc, void * user_data) {
     uint8_t type;
     if (read_proc(&type, sizeof(uint8_t), user_data) == sizeof(uint8_t)) {
         switch (type) {
@@ -513,18 +513,18 @@ size_t amf0_data_size(const amf0_data *data) {
 }
 
 /* write a number */
-static size_t amf0_number_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_number_write(const amf0_data * data, amf_write_proc_t write_proc, void * user_data) {
     number64_t n = swap_number64(data->number_data);
     return write_proc(&n, sizeof(number64_t), user_data);
 }
 
 /* write a boolean */
-static size_t amf0_boolean_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_boolean_write(const amf0_data * data, amf_write_proc_t write_proc, void * user_data) {
     return write_proc(&(data->boolean_data), sizeof(uint8_t), user_data);
 }
 
 /* write a string */
-static size_t amf0_string_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_string_write(const amf0_data * data, amf_write_proc_t write_proc, void * user_data) {
     uint16_t s;
     size_t w = 0;
 
@@ -538,7 +538,7 @@ static size_t amf0_string_write(const amf0_data * data, write_proc_t write_proc,
 }
 
 /* write an object */
-static size_t amf0_object_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_object_write(const amf0_data * data, amf_write_proc_t write_proc, void * user_data) {
     amf0_node * node;
     size_t w = 0;
     uint16_t filler = swap_uint16(0);
@@ -560,7 +560,7 @@ static size_t amf0_object_write(const amf0_data * data, write_proc_t write_proc,
 }
 
 /* write an associative array */
-static size_t amf0_associative_array_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_associative_array_write(const amf0_data * data, amf_write_proc_t write_proc, void * user_data) {
     amf0_node * node;
     size_t w = 0;
     uint32_t s;
@@ -585,7 +585,7 @@ static size_t amf0_associative_array_write(const amf0_data * data, write_proc_t 
 }
 
 /* write an array */
-static size_t amf0_array_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_array_write(const amf0_data * data, amf_write_proc_t write_proc, void * user_data) {
     amf0_node * node;
     size_t w = 0;
     uint32_t s;
@@ -602,7 +602,7 @@ static size_t amf0_array_write(const amf0_data * data, write_proc_t write_proc, 
 }
 
 /* write a date */
-static size_t amf0_date_write(const amf0_data * data, write_proc_t write_proc, void * user_data) {
+static size_t amf0_date_write(const amf0_data * data, amf_write_proc_t write_proc, void * user_data) {
     size_t w = 0;
     number64_t milli;
     int16_t tz;
@@ -616,7 +616,7 @@ static size_t amf0_date_write(const amf0_data * data, write_proc_t write_proc, v
 }
 
 /* write amf data to stream */
-size_t amf0_data_write(const amf0_data *data, write_proc_t write_proc, void * user_data) {
+size_t amf0_data_write(const amf0_data *data, amf_write_proc_t write_proc, void * user_data) {
     size_t s = 0;
     if (data != NULL) {
         s += write_proc(&(data->type), sizeof(uint8_t), user_data);
