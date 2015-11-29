@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
 project(libamf C)
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 set(LIBAMF_VERSION "0.2.0")
 
@@ -61,6 +62,13 @@ endif(MSVC)
 
 add_subdirectory(src)
 
+# check unit testing framework
+find_package(Check)
+
+# Enable unit testing if Check has been found
+if (CHECK_FOUND)
+  enable_testing()
+endif (CHECK_FOUND)
+
 # tests
-enable_testing()
 add_subdirectory(tests)
