@@ -42,3 +42,45 @@ size_t file_read(void * out_buffer, size_t size, void * user_data) {
 size_t file_write(const void * in_buffer, size_t size, void * user_data) {
     return fwrite(in_buffer, sizeof(uint8_t), size, (FILE *)user_data);
 }
+
+/* read a big-endian 64-bit floating point value */
+size_t read_number64_be(amf_read_proc_t read_proc, void * user_data, number64_t * val) {
+    char data[8];
+    size_t size = read_proc(data, sizeof(data), user_data);
+
+    if (size == sizeof(data)) {
+        uint64_t v;
+        v =   ((uint64_t)data[7] << 0)
+            | ((uint64_t)data[6] << 8)
+            | ((uint64_t)data[5] << 16)
+            | ((uint64_t)data[4] << 24)
+            | ((uint64_t)data[3] << 32)
+            | ((uint64_t)data[2] << 40)
+            | ((uint64_t)data[1] << 48)
+            | ((uint64_t)data[0] << 56);
+        *val = (number64_t)v;
+    }
+
+    return size;
+}
+
+/* read a big-endian unsigned 32-bit integer */
+size_t read_uint32_be(amf_read_proc_t read_proc, void * user_data, uint32_t * val);
+
+/* read a big-endian unsigned 16-bit integer */
+size_t read_uint16_be(amf_read_proc_t read_proc, void * user_data, uint16_t * val);
+
+/* read a big-endian signed 16-bit integer */
+size_t read_int16_be(amf_read_proc_t read_proc, void * user_data, int16_t * val);
+
+/* write a big-endian 64-bit floating point value */
+size_t write_number64_be(amf_write_proc_t write_proc, void * user_data, number64_t val);
+
+/* write a big-endian unsigned 32-bit integer */
+size_t write_uint32_be(amf_write_proc_t write_proc, void * user_data, uint32_t val);
+
+/* write a big-endian unsigned 16-bit integer */
+size_t write_uint16_be(amf_write_proc_t write_proc, void * user_data, uint16_t val);
+
+/* write a big-endian signed 16-bit integer */
+size_t write_int16_be(amf_write_proc_t write_proc, void * user_data, int16_t val);
